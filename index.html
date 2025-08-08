@@ -79,7 +79,7 @@
                  <div class="mt-4">
                     <label class="label">4. Finalize</label>
                     <div class="flex flex-wrap gap-2">
-                        <button id="downloadBtn" class="btn btn-secondary" disabled>Download-Processed</button>
+                        <button id="downloadBtn" class="btn btn-secondary" disabled>Download Processed</button>
                         <button id="resetBtn" class="btn btn-danger" disabled>Reset</button>
                     </div>
                 </div>
@@ -176,36 +176,32 @@
             }
         }
 
+        /**
+         * Decryption is now universal: it always restores the original image.
+         */
         function handleDecrypt() {
-            const mode = document.querySelector('input[name="mode"]:checked').value;
-            if (mode === 'swap') {
-                // Swap is its own inverse, so we just apply it again
-                applyPixelSwap();
-            } else if (mode === 'shift') {
-                const value = parseInt(shiftValueInput.value, 10);
-                if (isNaN(value) || value < 0 || value > 255) {
-                    alert('Please enter a valid key between 0 and 255.');
-                    return;
-                }
-                // Decrypt by subtracting the value
-                applyPixelShift(-value);
+            if (originalImageData) {
+                processedCtx.putImageData(originalImageData, 0, 0);
             }
         }
 
         /**
-         * Swaps adjacent pixels horizontally. This is its own inverse.
-         * Replicates the logic from the Python script.
+         * Swaps adjacent pixels horizontally, based on the original image.
          */
         function applyPixelSwap() {
             if (!originalImageData) return;
-            const imageData = processedCtx.getImageData(0, 0, processedCanvas.width, processedCanvas.height);
-            const data = imageData.data;
-            const width = imageData.width;
-            const height = imageData.height;
+            // Create a fresh copy from the original image data to work on
+            const newImageData = new ImageData(
+                new Uint8ClampedArray(originalImageData.data),
+                originalImageData.width,
+                originalImageData.height
+            );
+            const data = newImageData.data;
+            const width = newImageData.width;
+            const height = newImageData.height;
 
             for (let y = 0; y < height; y++) {
                 for (let x = 0; x < width - 1; x += 2) {
-                    // Get the starting index for the current pixel and the next one
                     const pixel1_index = (y * width + x) * 4;
                     const pixel2_index = (y * width + (x + 1)) * 4;
 
@@ -217,24 +213,28 @@
                     }
                 }
             }
-            processedCtx.putImageData(imageData, 0, 0);
+            processedCtx.putImageData(newImageData, 0, 0);
         }
 
         /**
-         * Adds or subtracts a value from each R, G, B channel.
-         * Uses modulo arithmetic to wrap around 0-255 range.
+         * Adds a value to each R, G, B channel, based on the original image.
          */
         function applyPixelShift(value) {
             if (!originalImageData) return;
-            const imageData = processedCtx.getImageData(0, 0, processedCanvas.width, processedCanvas.height);
-            const data = imageData.data;
+            // Create a fresh copy from the original image data to work on
+            const newImageData = new ImageData(
+                new Uint8ClampedArray(originalImageData.data),
+                originalImageData.width,
+                originalImageData.height
+            );
+            const data = newImageData.data;
 
             for (let i = 0; i < data.length; i += 4) {
                 data[i] = (data[i] + value + 256) % 256;       // Red
                 data[i + 1] = (data[i + 1] + value + 256) % 256; // Green
                 data[i + 2] = (data[i + 2] + value + 256) % 256; // Blue
             }
-            processedCtx.putImageData(imageData, 0, 0);
+            processedCtx.putImageData(newImageData, 0, 0);
         }
 
         function downloadImage() {
