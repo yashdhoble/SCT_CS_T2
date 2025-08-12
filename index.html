@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Advanced Image Encryption Tool</title>
+    <title>Image Encryption Tool</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <style>
@@ -42,13 +42,13 @@
         
         <div class="text-center mb-6">
             <h1 class="text-3xl md:text-4xl font-bold text-white">Advanced Pixel Encryptor</h1>
-            <p class="text-gray-400 mt-2">Encrypt images using pixel swapping or a key-based shift.</p>
+            <p class="text-gray-400 mt-2"></p>
         </div>
 
         <!-- Controls -->
         <div class="bg-gray-700/50 p-4 rounded-xl mb-6 grid grid-cols-1 md:grid-cols-2 gap-6">
             
-            <!-- Column 1: Setup -->
+            <!-- Column 1: Setup & Options -->
             <div class="flex flex-col gap-4">
                  <div>
                     <label for="imageLoader" class="label">1. Upload Image</label>
@@ -57,18 +57,22 @@
                  <div>
                     <label class="label">2. Select Mode</label>
                     <div class="flex gap-4">
-                        <label class="flex items-center"><input type="radio" name="mode" value="swap" class="mr-2" checked> Swap Pixels</label>
+                        <label class="flex items-center"><input type="radio" name="mode" value="scramble" class="mr-2" checked> Scramble Blocks</label>
                         <label class="flex items-center"><input type="radio" name="mode" value="shift" class="mr-2"> Shift Pixels</label>
                     </div>
+                </div>
+                 <div id="scramble-container">
+                    <label for="blockSize" class="label">Block Size (e.g., 8, 16, 32)</label>
+                    <input type="number" id="blockSize" value="16" min="2" step="2" class="input-field">
+                </div>
+                <div id="shift-container" style="display: none;">
+                    <label for="shiftValue" class="label">Encryption Key (0-255)</label>
+                    <input type="number" id="shiftValue" value="50" min="0" max="255" class="input-field">
                 </div>
             </div>
 
             <!-- Column 2: Actions -->
             <div class="flex flex-col gap-4">
-                <div id="shift-container">
-                    <label for="shiftValue" class="label">Encryption Key (0-255)</label>
-                    <input type="number" id="shiftValue" value="50" min="0" max="255" class="input-field">
-                </div>
                 <div>
                      <label class="label">3. Apply Operation</label>
                      <div class="flex flex-wrap gap-2">
@@ -115,7 +119,9 @@
         const decryptBtn = document.getElementById('decryptBtn');
         const downloadBtn = document.getElementById('downloadBtn');
         const resetBtn = document.getElementById('resetBtn');
+        const blockSizeInput = document.getElementById('blockSize');
         const shiftValueInput = document.getElementById('shiftValue');
+        const scrambleContainer = document.getElementById('scramble-container');
         const shiftContainer = document.getElementById('shift-container');
         const modeRadios = document.querySelectorAll('input[name="mode"]');
 
@@ -136,7 +142,7 @@
         decryptBtn.addEventListener('click', handleDecrypt);
         downloadBtn.addEventListener('click', downloadImage);
         resetBtn.addEventListener('click', resetApplication);
-        modeRadios.forEach(radio => radio.addEventListener('change', toggleShiftInput));
+        modeRadios.forEach(radio => radio.addEventListener('change', toggleInputs));
 
         // --- Core Logic ---
 
@@ -164,8 +170,13 @@
         
         function handleEncrypt() {
             const mode = document.querySelector('input[name="mode"]:checked').value;
-            if (mode === 'swap') {
-                applyPixelSwap();
+            if (mode === 'scramble') {
+                const blockSize = parseInt(blockSizeInput.value, 10);
+                if (isNaN(blockSize) || blockSize < 2) {
+                    alert('Please enter a valid block size (e.g., 8, 16).');
+                    return;
+                }
+                applyBlockScramble(blockSize);
             } else if (mode === 'shift') {
                 const value = parseInt(shiftValueInput.value, 10);
                 if (isNaN(value) || value < 0 || value > 255) {
@@ -176,9 +187,6 @@
             }
         }
 
-        /**
-         * Decryption is now universal: it always restores the original image.
-         */
         function handleDecrypt() {
             if (originalImageData) {
                 processedCtx.putImageData(originalImageData, 0, 0);
@@ -186,42 +194,71 @@
         }
 
         /**
-         * Swaps adjacent pixels horizontally, based on the original image.
+         * Scrambles the image by dividing it into blocks and shuffling their positions.
          */
-        function applyPixelSwap() {
+        function applyBlockScramble(blockSize) {
             if (!originalImageData) return;
-            // Create a fresh copy from the original image data to work on
-            const newImageData = new ImageData(
-                new Uint8ClampedArray(originalImageData.data),
-                originalImageData.width,
-                originalImageData.height
-            );
-            const data = newImageData.data;
-            const width = newImageData.width;
-            const height = newImageData.height;
 
-            for (let y = 0; y < height; y++) {
-                for (let x = 0; x < width - 1; x += 2) {
-                    const pixel1_index = (y * width + x) * 4;
-                    const pixel2_index = (y * width + (x + 1)) * 4;
-
-                    // Swap R, G, B, A values
-                    for (let i = 0; i < 4; i++) {
-                        let temp = data[pixel1_index + i];
-                        data[pixel1_index + i] = data[pixel2_index + i];
-                        data[pixel2_index + i] = temp;
-                    }
+            const width = originalImageData.width;
+            const height = originalImageData.height;
+            
+            // Create a new blank image data to draw the scrambled blocks onto
+            const scrambledImageData = new ImageData(width, height);
+            
+            // Create a list of block coordinates
+            const blocks = [];
+            for (let y = 0; y < height; y += blockSize) {
+                for (let x = 0; x < width; x += blockSize) {
+                    blocks.push({ x, y });
                 }
             }
-            processedCtx.putImageData(newImageData, 0, 0);
+
+            // Shuffle the list of blocks randomly (Fisher-Yates shuffle)
+            for (let i = blocks.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [blocks[i], blocks[j]] = [blocks[j], blocks[i]];
+            }
+
+            // Draw the scrambled blocks
+            let blockIndex = 0;
+            for (let y = 0; y < height; y += blockSize) {
+                for (let x = 0; x < width; x += blockSize) {
+                    const sourceBlock = blocks[blockIndex];
+                    copyBlock(originalImageData, scrambledImageData, sourceBlock.x, sourceBlock.y, x, y, blockSize);
+                    blockIndex++;
+                }
+            }
+
+            processedCtx.putImageData(scrambledImageData, 0, 0);
         }
 
         /**
-         * Adds a value to each R, G, B channel, based on the original image.
+         * Helper function to copy a block of pixels from a source to a destination.
          */
+        function copyBlock(source, dest, sourceX, sourceY, destX, destY, size) {
+            for (let y = 0; y < size; y++) {
+                for (let x = 0; x < size; x++) {
+                    const sourcePixelX = sourceX + x;
+                    const sourcePixelY = sourceY + y;
+                    const destPixelX = destX + x;
+                    const destPixelY = destY + y;
+
+                    if (sourcePixelX < source.width && sourcePixelY < source.height) {
+                        const sourceIndex = (sourcePixelY * source.width + sourcePixelX) * 4;
+                        const destIndex = (destPixelY * dest.width + destPixelX) * 4;
+
+                        dest.data[destIndex] = source.data[sourceIndex];
+                        dest.data[destIndex + 1] = source.data[sourceIndex + 1];
+                        dest.data[destIndex + 2] = source.data[sourceIndex + 2];
+                        dest.data[destIndex + 3] = source.data[sourceIndex + 3];
+                    }
+                }
+            }
+        }
+
+
         function applyPixelShift(value) {
             if (!originalImageData) return;
-            // Create a fresh copy from the original image data to work on
             const newImageData = new ImageData(
                 new Uint8ClampedArray(originalImageData.data),
                 originalImageData.width,
@@ -230,9 +267,9 @@
             const data = newImageData.data;
 
             for (let i = 0; i < data.length; i += 4) {
-                data[i] = (data[i] + value + 256) % 256;       // Red
-                data[i + 1] = (data[i + 1] + value + 256) % 256; // Green
-                data[i + 2] = (data[i + 2] + value + 256) % 256; // Blue
+                data[i] = (data[i] + value + 256) % 256;
+                data[i + 1] = (data[i + 1] + value + 256) % 256;
+                data[i + 2] = (data[i + 2] + value + 256) % 256;
             }
             processedCtx.putImageData(newImageData, 0, 0);
         }
@@ -256,8 +293,9 @@
         }
 
         // --- UI Helper Functions ---
-        function toggleShiftInput() {
+        function toggleInputs() {
             const mode = document.querySelector('input[name="mode"]:checked').value;
+            scrambleContainer.style.display = mode === 'scramble' ? 'block' : 'none';
             shiftContainer.style.display = mode === 'shift' ? 'block' : 'none';
         }
 
@@ -270,7 +308,7 @@
         }
         
         // Initial state
-        toggleShiftInput();
+        toggleInputs();
 
     </script>
 </body>
